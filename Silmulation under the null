@@ -1,0 +1,208 @@
+###### Under the alternative hypothesis#####
+
+##Franck Ngangom
+## Last modified on 30/11/2023
+
+
+#####Exploring the data#####
+
+#loading the data from the speff2trial
+library(speff2trial)
+##loading required pqckqges
+library(parallel)
+library(sandwich)
+library(lmtest)
+library(ggplot2)
+library(gridExtra)
+
+data <- ACTG175
+
+## removing non baseline covariates
+data <-subset(data,select = c(-cd496,-cd820, -pidnum,-r,-arms,-days, -cens,-offtrt, -oprior))
+
+
+set.seed(123)
+
+#step 1
+# Outcome (continuous): Y
+# subset tge data into control and treatment
+df_control <- subset(data, treat == 0)
+df_treatment <- subset(data, treat == 1)
+
+# Fit models for treatment and control arms using stepwise regression
+model_treatment <- lm(cd420 ~ ., data = df_treatment)
+model_control <- lm(cd420 ~ ., data = df_control)
+
+# Perform stepwise model selection
+step_model_treatment <- step(model_treatment, direction = "both")
+step_model_control <- step(model_control, direction = "both")
+
+#  the summary of the selected models
+summary(step_model_treatment)
+summary(step_model_control)
+
+#step 2
+#Randomly selecting 1000000 observations 
+index <- sample(nrow(data), 1000000, replace = TRUE)
+
+# Sample from the original dataset with replacement
+sample_data <- data[index, ]
+
+# Calculate expected outcomes under treatment and control using the fitted models
+expected_outcome_treatment <- rnorm(nrow(sample_data), 
+                                    predict(step_model_treatment,type="response", newdata = sample_data),117)
+
+
+expected_outcome_control <- rnorm(nrow(sample_data),
+                                  predict(step_model_control, type="response", newdata = sample_data),97.33)
+
+
+
+# Step 3
+# Calculate the difference in expected outcomes
+outcome_difference <-mean(expected_outcome_treatment) - mean(expected_outcome_control)
+
+# Step 4
+
+#### Simulations ####
+n <- nrow(data)
+
+# Create an empty list to store the output
+output <- as.list(replicate(2000, data.frame(Unadj_Variance = numeric(0), Unadj_Estimate= numeric(0), Unblinded_Unadj_Var=numeric(0),Blinded_Unadj_Var=numeric(0), 
+                                             Blinded_Unadj_Var_Tim_Friede=numeric(0),STD_Estimate=numeric(0),STD_Variance=numeric(0),
+                                             Adj_Variance =numeric(0), Blinded_Adj_Var=numeric(0)), simplify = FALSE))
+
+
+
+
+
+
+# Perform 1000 simulations
+for (i in 1:1000) {
+  
+  set.seed(i)
+  #Randomly selecting n observations (return the index of these obs)
+  index <- sample(n, 2000, replace = TRUE)
+  
+  # Sample from the original dataset with replacement
+  interimdata <- data[index, ]
+  
+  interimdata$trt <- rbinom(nrow(interimdata), 1, 0.5)
+  
+  interimdata$outcome_treat<- rnorm(nrow(interimdata),
+                                    predict(step_model_treatment,type="response", newdata =interimdata),117)
+  interimdata$outcome_control<-rnorm(nrow(interimdata),
+                                     predict(step_model_control,type="response", newdata =interimdata),97.33)
+  
+  
+  
+  
+  interimdata$Y <- interimdata$trt*(interimdata$outcome_treat)+(1-interimdata$trt)*interimdata$outcome_control
+  
+  interimdata_total<- interimdata
+  
+  n1 <- 30
+  while (n1 <= 2000) {
+    
+    interimdata <- interimdata_total[1:n1, ]
+    model <- lm(Y~ trt, data = interimdata)
+    
+    Unadj_Estimate <- coefficients(model)[2]
+    Unadj_Variance <- coeftest(model, vcov = vcovHC(model))[2, 2]^2
+    
+    ### ### calculating Unblinded unadjusted  variance
+    Unblinded_Unadj_Var <- var(interimdata$trt * interimdata$Y/ mean(interimdata$trt) -
+                                (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * interimdata$Y-
+                                (interimdata$trt / mean(interimdata$trt) * mean(interimdata$Y[interimdata$trt == 1]) -
+                                   (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * mean(interimdata$Y[interimdata$trt == 0]))) / n1
+    
+    ### calculating blinded unadjusted  variance
+    Blinded_Unadj_Var <- 1 / ((1 - mean(interimdata$trt)) * mean(interimdata$trt)) * var(interimdata$Y- mean(interimdata$Y)) / n1
+    
+    ### calculating blinded unadjusted  varianced (Tim Friede)
+    Blinded_Unadj_Var_Tim_Friede <- sum((interimdata$Y- mean(interimdata$Y))^2) / (n1 - 1) * 2 / (n1 / 2)
+    
+    ## ## fitting a model with baseline covariates
+    model1s <- lm(Y~ trt+age + wtkg + hemo + homo + drugs+z30 + karnof +race + gender+cd40 + cd80, data = interimdata)
+    
+    Adj_estimate <- coefficients(model1s)[2]
+    Adj_Variance <- (coeftest(model1s, vcov = vcovHC(model1s))[2, 2])^2
+    
+    
+    # Adjusing baseline covariates: standardization method
+    ## create prediction for all observations from the treated model
+    sim_1 <- subset(interimdata, select = c(trt,age, wtkg,hemo,homo,drugs,z30,karnof ,race,gender,cd40,cd80))
+    sim_1$trt <-1
+    predicted1<-predict(model1s,type="response", newdata=sim_1) 
+    
+    ## create prediction for all observations from the control model
+    sim_0 <- subset(interimdata, select = c(trt,age, wtkg,hemo,homo,drugs,z30,karnof ,race,gender,cd40,cd80))
+    sim_0$trt <- 0
+    
+    
+    predicted2 <-predict(model1s, type="response", newdata=sim_0) 
+    
+    STD_Estimate<- mean(predicted1)-mean(predicted2)
+    
+    ### calculating Unblinded adjusted  variance
+    STD_Variance<- mean(((interimdata$trt==1)/mean(interimdata$trt==1)*(interimdata$Y-predicted1)+ predicted1 -
+                           ((interimdata$trt==0)/mean(interimdata$trt==0)*(interimdata$Y-predicted2)+ predicted2) -
+                           (mean(predicted1)-mean(predicted2)))^2)/n1
+    ## fitting a model with baseline covariates and blinding
+    model1adj <- lm(Y~ age + wtkg + hemo + homo + drugs+z30 + karnof +race + gender+cd40 + cd80, data = interimdata)
+    
+    ### calculating blinded adjusted  variance
+    Blinded_Adj_Var <- var(interimdata$Y- predict(model1adj)) / (mean(interimdata$trt) * (1 - mean(interimdata$trt))) / n1
+    
+    # Store the standard errors in the output list
+    output[[n1]][i, "Unadj_Variance"] <- Unadj_Variance
+    output[[n1]][i, "Unblinded_Unadj_Var"] <- Unblinded_Unadj_Var 
+    output[[n1]][i, "Blinded_Unadj_Var"] <- Blinded_Unadj_Var
+    output[[n1]][i, "Blinded_Unadj_Var_Tim_Friede"] <- Blinded_Unadj_Var_Tim_Friede
+    output[[n1]][i, "Adj_Variance"] <- Adj_Variance
+    output[[n1]][i, "Blinded_Adj_Var"] <- Blinded_Adj_Var
+    output[[n1]][i, "STD_Variance"]<-STD_Variance
+    output[[n1]][i, "Unadj_Estimate"] <-Unadj_Estimate
+    output[[n1]][i, "Adj_estimate"] <- Adj_estimate
+    output[[n1]][i, "STD_Estimate"]<-STD_Estimate
+    
+    # Increment the sample size by 10
+    n1 <- n1 + 10
+  }
+}
+# Calculate the mean standard errors
+mean_errors <- t(sapply(output, function(df) {
+  data.frame(mean_Unadj_Variance = mean(df$Unadj_Variance,na.rm=TRUE),
+             mean_Adj_Variance = mean(df$Adj_Variance, na.rm=TRUE),
+             mean_Unblinded_Unadj_Var = mean(df$Unblinded_Unadj_Var,na.rm=TRUE),
+             mean_Blinded_Unadj_Var = mean(df$Blinded_Unadj_Var,na.rm=TRUE),
+             mean_Blinded_Unadj_Var_Tim_Friede = mean(df$Blinded_Unadj_Var_Tim_Friede,na.rm=TRUE),
+             mean_Blinded_Adj_Var = mean(df$Blinded_Adj_Var,na.rm=TRUE),
+             mean_STD_Variance=mean(df$STD_Variance,na.rm=TRUE))
+}))
+
+
+mean_errors<-as.data.frame(mean_errors)
+
+mean_errors<-mean_errors[seq(50, 2000, by = 10),]
+
+save(output, file = "alternative_output.RData")
+
+save(mean_errors, file = "alternative_mean_errors.RData")
+
+
+## sample size calculation
+
+total_n<-2*(qnorm(0.025)+qnorm(0.1))^2*(17150.93+21632.89)/49.50781^2 #332.5289
+
+
+outcome_difference <-mean(expected_outcome_treatment) - mean(expected_outcome_control)
+
+prob_treat<-mean(expected_outcome_treatment)
+prob_control<-mean(expected_outcome_control)
+
+
+
+
+
+
