@@ -1,0 +1,290 @@
+####information####
+##Franck 
+## Last modified on 16/01/2024
+
+
+## Type 1 error
+
+library(speff2trial)
+##loading required pqckqges
+library(parallel)
+library(sandwich)
+library(lmtest)
+library(ggplot2)
+library(gridExtra)
+
+data <- ACTG175
+n <- nrow(data)
+
+## From Kelly and Tsiatsis2006 formula to calculate information
+#tot_information<-(qnorm(0.025)+qnorm(0.1))^2/outcome_difference^2 ## 0.004286953
+
+tot_information<-0.004286953
+
+
+#result <- as.list(replicate(2000, data.frame(Variance = numeric(0), Estimate= numeric(0), information=numeric(0),total_information=numeric(0), 
+#                                            Blinded_Unadj_Var_Tim_Friede=numeric(0),STD_Estimate=numeric(0),STD_Variance=numeric(0),
+#                                           Adj_Variance =numeric(0), Blinded_Adj_Var=numeric(0)), simplify = FALSE))
+
+
+
+type1_error_uuv <- numeric(0)
+type1_error_buv <- numeric(0)
+type1_error_bav <- numeric(0)
+type1_error_std <- numeric(0)
+
+
+##calculting information using unadjusted unblinded variance
+for (i in 1:1000) {
+  set.seed(i)
+  n1 <- 20
+  
+  # Randomly select n observations (return the index of these obs)
+  index <- sample(n, n, replace = TRUE)
+  
+  #creating a new variable 'trt' with equal probabilities of control and treatment
+  data$trt <- rbinom(n, 1, 0.5)
+  
+  # Sample from the original dataset with replacement
+  interimdata <- data[index, ]
+  interimdata_total<- interimdata
+  inf_Unblinded_Unadj_Var<-0
+  while (inf_Unblinded_Unadj_Var <= tot_information) {
+    
+    interimdata <- data[1:n1, ]
+    model <- lm(cd420~ trt, data = interimdata)
+    Unadj_Estimate <- coefficients(model)[2] # retrieving the estimate
+    
+    ### calculating Unblinded unadjusted  variance
+    Unblinded_Unadj_Var <- var(interimdata$trt * interimdata$cd420/ mean(interimdata$trt) -
+                                 (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * interimdata$cd420-
+                                 (interimdata$trt / mean(interimdata$trt) * mean(interimdata$cd420[interimdata$trt == 1]) -
+                                    (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * mean(interimdata$cd420[interimdata$trt == 0]))) / n1
+    
+    inf_Unblinded_Unadj_Var<- 1/ Unblinded_Unadj_Var
+    
+    # Store the standard errors in the result list
+    #result[[n1]][i, "Unblinded_Unadj_Var"] <- Unblinded_Unadj_Var
+    #result[[n1]][i, "Unblinded_Unadj_information"] <- inf_Unblinded_Unadj_Var
+    #result[[n1]][i, "Unadj_Estimate"] <-Unadj_Estimate
+    #result[[n1]][i, "total_information"] <- tot_information
+    # Increment the sample size by 1
+    n1 <- n1 + 1
+    
+  }
+  type1_error_uuv <- c(type1_error_uuv, as.numeric(abs(Unadj_Estimate / sqrt(Unblinded_Unadj_Var)) >= 1.96))
+}
+
+
+
+##calculting information using unadjusted blinded variance
+for (i in 1:1000) {
+  set.seed(i)
+  
+  # Randomly select n observations (return the index of these obs)
+  index <- sample(n, n, replace = TRUE)
+  
+  #creating a new variable 'trt' with equal probabilities of control and treatment
+  data$trt <- rbinom(n, 1, 0.5)
+  
+  # Sample from the original dataset with replacement
+  interimdata <- data[index, ]
+  
+  interimdata_total<- interimdata
+  n1 <- 20
+  inf_Blinded_Unadj_Var<-0
+  while (inf_Blinded_Unadj_Var <= tot_information) {
+    
+    interimdata <- data[1:n1, ]
+    model <- lm(cd420~ trt, data = interimdata)
+    Unadj_Estimate <- coefficients(model)[2] # retrieving the estimate
+    
+    ### calculating blinded unadjusted  variance
+    Blinded_Unadj_Var <- 1 / ((1 - mean(interimdata$trt)) * mean(interimdata$trt)) * var(interimdata$cd420- mean(interimdata$cd420)) / n1
+    
+    inf_Blinded_Unadj_Var<-1/ Blinded_Unadj_Var
+    
+    
+    # Store the standard errors in the result list
+    #result[[n1]][i, "Blinded_Unadj_Var"] <- Blinded_Unadj_Var
+    #result[[n1]][i, "Blinded_Unadj_information"] <- inf_Blinded_Unadj_Var
+    #result[[n1]][i, "Estimate"] <-Unadj_Estimate
+    #result[[n1]][i, "total_information"] <- tot_information
+    # Increment the sample size by 1
+    n1 <- n1 + 1
+  }
+  n1 <- n1-1
+  interimdata <- interimdata_total[1:n1, ]
+  model <- lm(cd420~ trt, data = interimdata)
+  
+  Estimate <- coefficients(model)[2]
+  
+  Unblinded_Unadj_Var <- var(interimdata$trt * interimdata$cd420/ mean(interimdata$trt) -
+                               (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * interimdata$cd420-
+                               (interimdata$trt / mean(interimdata$trt) * mean(interimdata$cd420[interimdata$trt == 1]) -
+                                  (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * mean(interimdata$cd420[interimdata$trt == 0]))) / n1
+  
+  type1_error_buv <- c(type1_error_buv, as.numeric(abs(Unadj_Estimate / sqrt(Unblinded_Unadj_Var)) >=1.96))
+}
+
+
+##calculting information using adjusted unblinded variance: Standardisation
+for (i in 1:1000) {
+  set.seed(i)
+  n1 <- 30
+  
+  # Randomly select n observations (return the index of these obs)
+  index <- sample(n, n, replace = TRUE)
+  
+  #creating a new variable 'trt' with equal probabilities of control and treatment
+  data$trt <- rbinom(n, 1, 0.5)
+  
+  # Sample from the original dataset with replacement
+  interimdata <- data[index, ]
+  inf_STD_Variance<-0 
+  while (inf_STD_Variance <= tot_information) {
+    
+    interimdata <- interimdata_total[1:n1, ]
+    
+    ## Adjusted
+    model1s <- lm(cd420~ trt+age + wtkg + hemo + homo + drugs+z30 +gender+cd40 + cd80, data = interimdata)
+    # Adjusing baseline covariates: standardization method
+    ## create prediction for all observations from the treated model
+    sim_1 <- subset(interimdata, select = c(trt,age, wtkg,hemo,homo,drugs,z30,karnof ,race,gender,cd40,cd80))
+    sim_1$trt <-1
+    predicted1<-predict(model1s,type="response", newdata=sim_1) 
+    
+    ## create prediction for all observations from the control model
+    sim_0 <- subset(interimdata, select = c(trt,age, wtkg,hemo,homo,drugs,z30,karnof ,race,gender,cd40,cd80))
+    sim_0$trt <- 0
+    predicted2 <-predict(model1s, type="response", newdata=sim_0) 
+    
+    STD_Estimate<- mean(predicted1)-mean(predicted2)
+    
+    ### calculating unblinded adjusted  variance
+    STD_Variance<- mean(((interimdata$trt==1)/mean(interimdata$trt==1)*(interimdata$cd420-predicted1)+ predicted1 -
+                           ((interimdata$trt==0)/mean(interimdata$trt==0)*(interimdata$cd420-predicted2)+ predicted2) -
+                           (mean(predicted1)-mean(predicted2)))^2)/n1
+    
+    inf_STD_Variance<-1/ STD_Variance
+    
+    
+    # Store the standard errors in the result list
+    #result[[n1]][i, "STD_Variance"] <- STD_Variance
+    #result[[n1]][i, "STD_Variance_information"] <- inf_STD_Variance
+    #result[[n1]][i, "STD_Estimate"] <-STD_Estimate
+    #result[[n1]][i, "total_information"] <- tot_information
+    # Increment the sample size by 1
+    n1 <- n1 + 1
+    
+  }
+  type1_error_std <- c(type1_error_std, as.numeric(abs(STD_Estimate / sqrt(STD_Variance)) >=1.96))
+}
+
+##calculting information using adjusted blinded variance
+for (i in 1:1000) {
+  set.seed(i)
+  n1 <- 30
+  
+  # Randomly select n observations (return the index of these obs)
+  index <- sample(n, n, replace = TRUE)
+  
+  #creating a new variable 'trt' with equal probabilities of control and treatment
+  data$trt <- rbinom(n, 1, 0.5)
+  
+  # Sample from the original dataset with replacement
+  interimdata <- data[index, ]
+  inf_Blinded_Adj_Var<-0
+  while (inf_Blinded_Adj_Var <= tot_information) {
+    
+    interimdata <- interimdata_total[1:n1, ]
+    
+    ## fitting a model with baseline covariates and blinding
+    model1adj <- lm(cd420~ age + wtkg + hemo + homo + drugs+z30 + karnof +race + gender+cd40 + cd80, data = interimdata)
+    
+    Blinded_Adj_estimate <- coefficients(model1adj)[2]
+    ### calculating blinded adjusted  variance
+    Blinded_Adj_Var <- var(interimdata$cd420- predict(model1adj)) / (mean(interimdata$trt) * (1 - mean(interimdata$trt))) / n1
+    
+    inf_Blinded_Adj_Var<-1/ Blinded_Adj_Var
+    
+    
+    # Store the standard errors in the result list
+    #result[[n1]][i, "Blinded_Adj_Var"] <- Blinded_Adj_Var
+    #result[[n1]][i, "Blinded_Adj_Var_information"] <- inf_Blinded_Adj_Var
+    #result[[n1]][i, "total_information"] <- tot_information
+    # Increment the sample size by 1
+    n1 <- n1 + 1
+  }
+  n1 <- n1 -1
+  
+  ## Adjusted
+  model1s <- lm(cd420~ trt+age + wtkg + hemo + homo + drugs+z30 +gender+cd40 + cd80, data = interimdata)
+  # Adjusing baseline covariates: standardization method
+  ## create prediction for all observations from the treated model
+  sim_1 <- subset(interimdata, select = c(trt,age, wtkg,hemo,homo,drugs,z30,karnof ,race,gender,cd40,cd80))
+  sim_1$trt <-1
+  predicted1<-predict(model1s,type="response", newdata=sim_1) 
+  
+  ## create prediction for all observations from the control model
+  sim_0 <- subset(interimdata, select = c(trt,age, wtkg,hemo,homo,drugs,z30,karnof ,race,gender,cd40,cd80))
+  sim_0$trt <- 0
+  predicted2 <-predict(model1s, type="response", newdata=sim_0) 
+  
+  STD_Estimate<- mean(predicted1)-mean(predicted2)
+  
+  ### calculating unblinded adjusted  variance
+  STD_Variance<- mean(((interimdata$trt==1)/mean(interimdata$trt==1)*(interimdata$cd420-predicted1)+ predicted1 -
+                         ((interimdata$trt==0)/mean(interimdata$trt==0)*(interimdata$cd420-predicted2)+ predicted2) -
+                         (mean(predicted1)-mean(predicted2)))^2)/n1
+  
+  type1_error_bav <- c(type1_error_bav, as.numeric(abs(Unadj_Estimate / sqrt(Blinded_Adj_Var)) >=1.96))
+}
+
+
+
+type1_error_uuv <- mean(type1_error_uuv)
+type1_error_buv <- mean(type1_error_buv)
+type1_error_bav <- mean(type1_error_bav)
+type1_error_std <- mean(type1_error_std)
+
+
+result_df <- data.frame(
+  type1_error_uuv,
+  type1_error_buv,
+  type1_error_bav,
+  type1_error_std
+)
+
+type1_error_uuv <- mean(type1_error_uuv)
+type1_error_buv <- mean(type1_error_buv)
+type1_error_bav <- mean(type1_error_bav)
+type1_error_std <- mean(type1_error_std)
+
+
+error_rates <- c(
+  type1_error_uuv,
+  type1_error_buv,
+  type1_error_bav,
+  type1_error_std
+)
+
+methods <- c(
+  "Unblinded Unadjusted Variance",
+  "Blinded Unadjusted Variance",
+  "Blinded Adjusted Variance",
+  "Standardization Method"
+)
+
+comparison_data <- data.frame(Method = methods, ErrorRate = error_rates)
+
+# Create a bar plot
+ggplot(comparison_data, aes(x = Method, y = ErrorRate, fill = Method)) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Comparison of Type I Error Rates",
+       x = "Method",
+       y = "Type I Error Rate") +
+  # Adjust y-axis limits
+  theme_minimal() +
+  theme(legend.position = "none")
+
