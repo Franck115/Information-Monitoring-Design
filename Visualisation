@@ -1,0 +1,67 @@
+###### Visualisation#####
+
+##Franck 
+## Last modified on 30/11/2023
+
+load("null_mean_errors.RData")
+
+## splitting the mean_errors into 10 parts
+n1_values <- seq(50, 2000, by = 10)
+all_means <- cbind(mean_errors,n1_values )
+all_means<-as.data.frame(lapply(all_means, as.numeric))
+
+save(all_means, file = "all_means_H1.RData")
+
+
+
+
+
+## calculating the ratio, blinded/unblinded
+all_means$ratio_Adj<-all_means$mean_Blinded_Adj_Var/all_means$mean_STD_Variance
+all_means$ratio_unadj <-all_means$mean_Blinded_Unadj_Var/all_means$mean_Unblinded_Unadj_Var
+
+
+all_means$D_ratio_Adj<-(all_means$mean_ADJ_blinded_Variance-all_means$mean_Adj_Variance)/all_means$mean_Adj_Variance
+all_means$D_ratio_IF <-(all_means$mean_Blinded_IF_based-all_means$mean_Adj_Variance)/all_means$mean_Unblinded_IF_based
+
+library(ggplot2)
+b1<-ggplot(all_means, aes(x = n1_values)) +
+  geom_line(aes(y = ratio_Adj, color = "Adjusted"), linetype = "solid", size = 1) +
+  geom_line(aes(y = ratio_unadj, color = "Unadjusted"), linetype = "solid", size = 1) +
+  labs(title = " Comparison of the ratio blinded/unblinded of Adjusted and Unadjusted Methods",
+       x = "Sample Size",
+       y = "Mean Variance Blinded/Unblinded") +
+  scale_color_manual(values = c("Adjusted" = "red",
+                                "Unadjusted" = "green")) +
+  theme_minimal()
+
+
+b1
+
+ggsave("ratio_Blinded_unblinded_under_H0.pdf",b1 )
+
+
+df <- all_means
+
+library(ggplot2)
+p1<-ggplot(df2, aes(x = n1_values)) +
+  geom_line(aes(y = mean_Unblinded_Unadj_Var, color = "Unblinded Unadjusted"), linetype = "solid", size = 1) +
+  geom_line(aes(y = mean_Blinded_Unadj_Var, color = "Blinded Unadjusted"), linetype = "dashed", size = 1) +
+  geom_line(aes(y = mean_Adj_Variance, color = "Unblinded Adjusted"), linetype = "longdash", size = 1) +
+  geom_line(aes(y = mean_Blinded_Adj_Var, color = "Blinded Adjusted"), linetype = "dotdash", size = 1) +
+  labs(title = " Comparison of Variance Calculation Methods",
+       x = "Sample Size",
+       y = "Mean Variance") +
+  scale_color_manual(values = c("Unblinded Unadjusted" = "black",
+                                "Blinded Unadjusted" = "red",
+                                "Unblinded Adjusted" = "green",
+                                "Blinded Adjusted" = "purple")) +
+  theme_minimal()
+
+
+p1
+
+df1<-df[140:166,]
+df2<-df[170:196,]
+
+ggsave("variance_comparison_under_H0_2.pdf",p1 )
