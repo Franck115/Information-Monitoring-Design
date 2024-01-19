@@ -117,7 +117,7 @@ for (i in 1:1000) {
                                    (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * mean(interimdata$Y[interimdata$trt == 0]))) / n1
     
     ### calculating blinded unadjusted  variance
-    Blinded_Unadj_Var <- 1 / ((1 - mean(interimdata$trt)) * mean(interimdata$trt)) * var(interimdata$Y- mean(interimdata$Y)) / n1
+    Blinded_Unadj_Var <- var(interimdata$cd420)/ ((1 - mean(interimdata$trt)) * mean(interimdata$trt) * n1)
     
     ### calculating blinded unadjusted  varianced (Tim Friede)
     Blinded_Unadj_Var_Tim_Friede <- sum((interimdata$Y- mean(interimdata$Y))^2) / (n1 - 1) * 2 / (n1 / 2)
@@ -152,7 +152,7 @@ for (i in 1:1000) {
     model1adj <- lm(Y~ age + wtkg + hemo + homo + drugs+z30 + karnof +race + gender+cd40 + cd80, data = interimdata)
     
     ### calculating blinded adjusted  variance
-    Blinded_Adj_Var <- var(interimdata$Y- predict(model1adj)) / (mean(interimdata$trt) * (1 - mean(interimdata$trt))) / n1
+    Blinded_Adj_Var <- var(interimdata$Y- predict(model1adj)) / (mean(interimdata$trt) * (1 - mean(interimdata$trt))* n1)
     
     # Store the standard errors in the output list
     output[[n1]][i, "Unadj_Variance"] <- Unadj_Variance
