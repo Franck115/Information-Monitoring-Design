@@ -87,7 +87,7 @@ for (i in 1:1000) {
                                    (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * mean(interimdata$cd420[interimdata$trt == 0]))) / n1
     
     ### calculating Blinded unadjusted  variance
-    Blinded_Unadj_Var <- 1 / ((1 - mean(interimdata$trt)) * mean(interimdata$trt)) * var(interimdata$cd420- mean(interimdata$cd420)) / n1
+    Blinded_Unadj_Var <- var(interimdata$cd420)/ ((1 - mean(interimdata$trt)) * mean(interimdata$trt) * n1)
     
     ### Calculating the Blinded  unadjusted  variance  (Tim Friede)
     Blinded_Unadj_Var_Tim_Friede <- sum((interimdata$cd420- mean(interimdata$cd420))^2) / (n1 - 1) * 2 / (n1 / 2)
@@ -122,7 +122,7 @@ for (i in 1:1000) {
     
     Blinded_Adj_estimate <- coefficients(model1adj)[2]
     ### calculating blinded adjusted  variance
-    Blinded_Adj_Var <- var(interimdata$cd420- predict(model1adj)) / (mean(interimdata$trt) * (1 - mean(interimdata$trt))) / n1
+    Blinded_Adj_Var <- var(interimdata$cd420- predict(model1adj)) / (mean(interimdata$trt) * (1 - mean(interimdata$trt))* n1)
     
     # Store the standard errors in the output list
     output[[n1]][i, "Unadj_Variance"] <- Unadj_Variance
