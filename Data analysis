@@ -1,0 +1,294 @@
+###### Data Analysis#####
+
+##Franck
+## Last modified on 17/1/2024
+
+
+library(parallel)
+library(sandwich)
+library(lmtest)
+library(ggplot2)
+library(gridExtra)
+#library(table1)
+
+#load("/Users/ngangomfranck/Desktop/MaSTAT Project/acupuncture_data_reduced.RData")
+## removing non baseline covariates
+data <-subset(data,select = c(-id,-practice_id, -pk2,-f2,-f5,-acupuncturist))
+
+
+
+##Descriptive analysis
+
+
+#data<-within(data,{
+# sex<-factor(sex,labels = c("male" ,"female"))
+#migraine<-factor(migraine, labels = c("no","yes"))
+#group<-factor(group, labels = c("control","treatment"))
+#})
+
+
+##Baseline demographics
+#demo<-table1( ~ pk5 + wtkg + hemo + homo + drugs+oprior+z30+zprior+race+symptom +gender | arms,data = data)
+
+## print(xtable(demo2, type='latex'))
+
+##summary statistics of the baseline outcomes
+#demo2<-table1( ~ cd80 + cd40 | arms, data = data)
+
+# Remove missing data
+data <- data[complete.cases(data$pk5),]
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Assign relevant variables
+data$Y <- data$pk5
+data$trt <- data$group
+
+# Design parameters
+prob_control <- 0.20
+prob_treatment <- 0.35
+outcome_difference <- 3.5
+
+# Calculate total information from the Kelly et al formula and parameters
+tot_information <- ((qnorm(0.025) + qnorm(0.1)) / outcome_difference)^2
+
+# Initialize analysis results list
+analysis_result <- as.list(replicate(5000, data.frame(
+  Variance = numeric(0),
+  Estimate = numeric(0),
+  information = numeric(0),
+  total_information = numeric(0),
+  Unblinded_Unadj_Var = numeric(0),
+  Blinded_Unadj_Var_Tim_Friede = numeric(0),
+  STD_Estimate = numeric(0),
+  STD_Variance = numeric(0),
+  Adj_Variance = numeric(0),
+  Blinded_Adj_Var = numeric(0)
+), simplify = FALSE))
+
+
+
+
+
+# Generate random sample indices
+index <- sample(nrow(data), 1000, replace = TRUE)
+interimdata <- data[index, ]
+
+# Calculate information using unadjusted unblinded variance
+
+index <- sample(nrow(data), 5000, replace = TRUE)
+interimdata <- data[index, ]
+interimdata_total <- interimdata
+i<-1
+n1 <- 20
+inf_Unblinded_Unadj_Var <- 0
+
+  while (inf_Unblinded_Unadj_Var <= tot_information) {
+    interimdata <- interimdata_total[1:n1, ]
+    model <- lm(Y ~ trt, data = interimdata)
+    Estimate <- coefficients(model)[2]
+    Unblinded_Unadj_Var <- var(interimdata$trt * interimdata$Y / mean(interimdata$trt) -
+                                 (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * interimdata$Y -
+                                 (interimdata$trt / mean(interimdata$trt) * mean(interimdata$Y[interimdata$trt == 1]) -
+                                    (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * mean(interimdata$Y[interimdata$trt == 0])))/n1
+    inf_Unblinded_Unadj_Var <- 1 / Unblinded_Unadj_Var
+    
+    # Store the results in the analysis_result list
+    analysis_result[[n1]][i, "Unblinded_Unadj_Var"] <- Unblinded_Unadj_Var
+    analysis_result[[n1]][i, "Unblinded_Unadj_information"] <- inf_Unblinded_Unadj_Var
+    analysis_result[[n1]][i, "Estimate"] <-Estimate
+    analysis_result[[n1]][i, "total_information"] <- tot_information
+    # Increment the sample size by 1
+    n1 <- n1 + 1
+  }
+n1_uuv <- n1 - 1
+
+z_score_uuv <- Estimate / sqrt(Unblinded_Unadj_Var)
+
+# Calculate the two-tailed p-value
+p_value_uuv <- 2 * (1 - pnorm(abs(z_score_uuv)))
+
+
+
+
+set.seed(123)
+# Calculating information using unadjusted blinded variance
+index <- sample(nrow(data), 5000, replace = TRUE)
+interimdata <- data[index, ]
+n1 <- 20
+inf_Blinded_Unadj_Var <- 0
+interimdata_total <- interimdata
+
+  while (inf_Blinded_Unadj_Var <= tot_information) {
+    interimdata <- interimdata_total[1:n1, ]
+    model <- lm(Y ~ trt, data = interimdata)
+    
+    Estimate <- coefficients(model)[2]
+    Variance <- coeftest(model, vcov = vcovHC(model))[2, 2]^2
+    
+    # Calculating blinded unadjusted variance
+    Blinded_Unadj_Var <- var(interimdata$Y) / ((1 - mean(interimdata$trt)) * mean(interimdata$trt) * n1)
+    inf_Blinded_Unadj_Var <- 1 / Blinded_Unadj_Var
+    
+    # Store the results in the analysis_result list
+    analysis_result[[n1]][i, c("Blinded_Unadj_Var", "Blinded_Unadj_information", "Estimate", "total_information")] <- c(Blinded_Unadj_Var, inf_Blinded_Unadj_Var, Estimate, tot_information)
+    
+    # Increment the sample size by 1
+    n1 <- n1 + 1
+  }
+n1_buv <- n1 - 1
+n1 <- n1 - 1
+
+
+interimdata <- interimdata_total[1:n1, ]
+model <- lm(Y ~ trt, data = interimdata)
+Estimate <- coefficients(model)[2]
+Unblinded_Unadj_Var <- var(interimdata$trt * interimdata$Y / mean(interimdata$trt) -
+                             (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * interimdata$Y -
+                             (interimdata$trt / mean(interimdata$trt) * mean(interimdata$Y[interimdata$trt == 1]) -
+                                (1 - interimdata$trt) / (1 - mean(interimdata$trt)) * mean(interimdata$Y[interimdata$trt == 0])))/n1
+
+
+z_score_buv <- Estimate / sqrt(Unblinded_Unadj_Var)
+
+# Calculate the two-tailed p-value
+p_value_buv <- 2 * (1 - pnorm(abs(z_score_buv)))
+  
+
+# Calculating information using adjusted unblinded variance: Standardization
+set.seed(123)
+
+index <- sample(nrow(data), 5000, replace = TRUE)
+interimdata <- data[index, ]
+interimdata_total <- interimdata
+n1 <- 20
+inf_STD_Variance <- 0 
+
+  while (inf_STD_Variance <= tot_information) {
+    interimdata <- interimdata_total[1:n1, ]
+    
+    # Adjusted
+    model1s <- lm(Y ~ trt + age + chronicity + pk1 + f1 + migraine, data = interimdata)
+    
+    # Create prediction for all observations from the treated model
+    sim_1 <- interimdata
+    sim_1$trt <- 1
+    
+    # Create prediction for all observations from the control model
+    sim_0 <- interimdata
+    sim_0$trt <- 0
+    
+    predicted1 <- predict(model1s, type = "response", newdata = sim_1) 
+    predicted2 <- predict(model1s, type = "response", newdata = sim_0) 
+    
+    STD_Estimate <- mean(predicted1) - mean(predicted2)
+    
+    STD_Variance <- mean(((interimdata$trt == 1) / mean(interimdata$trt == 1) * (interimdata$Y - predicted1) + predicted1 -
+                             ((interimdata$trt == 0) / mean(interimdata$trt == 0) * (interimdata$Y - predicted2) + predicted2) -
+                             (mean(predicted1) - mean(predicted2)))^2) / n1
+    
+    inf_STD_Variance <- 1 / STD_Variance
+    
+    # Store the results in the analysis_result list
+    analysis_result[[n1]][i, c("STD_Variance", "STD_Variance_information", "STD_Estimate", "total_information")] <- c(STD_Variance, inf_STD_Variance, STD_Estimate, tot_information)
+    
+    # Increment the sample size by 1
+    n1 <- n1 + 1
+  }
+n1_std <- n1 - 1
+
+# Calculate the z-score
+z_score_std <- STD_Estimate / sqrt(STD_Variance)
+
+# Calculate the two-tailed p-value
+p_value_std <- 2 * (1 - pnorm(abs(z_score_std)))
+
+
+
+# Calculating information using adjusted blinded variance
+set.seed(123)
+
+index <- sample(nrow(data), 5000, replace = TRUE)
+interimdata <- data[index, ]
+interimdata_total <- interimdata
+n1 <- 20
+inf_Blinded_Adj_Var <- 0
+
+  while (inf_Blinded_Adj_Var <= tot_information) {
+    interimdata <- interimdata_total[1:n1, ]
+    
+    # Fitting a model with baseline covariates and blinding
+    model1adj <- lm(Y ~ age + chronicity + pk1 + f1 + migraine, data = interimdata)
+    
+    # Calculating blinded adjusted variance
+    Blinded_Adj_Var <- var(interimdata$Y - predict(model1adj),na.rm = TRUE) / (mean(interimdata$trt,na.rm = TRUE) * (1 - mean(interimdata$trt,na.rm = TRUE))* n1)
+    inf_Blinded_Adj_Var <- 1 / Blinded_Adj_Var
+    
+    # Store the results in the analysis_result list
+    analysis_result[[n1]][i, c("Blinded_Adj_Var", "Blinded_Adj_Var_information", "total_information")] <- c(Blinded_Adj_Var, inf_Blinded_Adj_Var, tot_information)
+    
+    # Increment the sample size by 1
+    n1 <- n1 + 1
+  }
+  n1_bav <- n1 - 1
+  n1<-n1 - 1
+  interimdata <- interimdata_total[1:n1, ]
+  
+  # Adjusted
+  model1s <- lm(Y ~ trt + age + chronicity + pk1 + f1 + migraine, data = interimdata)
+  
+  # Create prediction for all observations from the treated model
+  sim_1 <- interimdata
+  sim_1$trt <- 1
+  
+  # Create prediction for all observations from the control model
+  sim_0 <- interimdata
+  sim_0$trt <- 0
+  
+  predicted1 <- predict(model1s, type = "response", newdata = sim_1) 
+  predicted2 <- predict(model1s, type = "response", newdata = sim_0) 
+  
+  STD_Estimate <- mean(predicted1) - mean(predicted2)
+  
+  STD_Variance <- mean(((interimdata$trt == 1) / mean(interimdata$trt == 1) * (interimdata$Y - predicted1) + predicted1 -
+                          ((interimdata$trt == 0) / mean(interimdata$trt == 0) * (interimdata$Y - predicted2) + predicted2) -
+                          (mean(predicted1) - mean(predicted2)))^2) / n1
+  
+  
+  # Calculate the z-score
+  z_score_bav <- STD_Estimate / sqrt(STD_Variance)
+  
+  # Calculate the two-tailed p-value
+  p_value_bav <- 2 * (1 - pnorm(abs(z_score_bav)))
+  
+
+
+
+
+
+value <- c(
+  p_value_uuv,
+  p_value_buv,
+  p_value_std,
+  p_value_bav
+)
+
+sample_size <- c(
+  n1_uuv,
+  n1_buv,
+  n1_std,
+  n1_bav
+)
+
+
+Names <- c(
+  "Unblinded Unadjusted Variance",
+  "Blinded Unadjusted Variance",
+  "Standardization Method",
+  "Blinded Adjusted Variance"
+)
+
+comparison_data <- data.frame(Names = Names,value = value,sample_size=sample_size)
+
+
