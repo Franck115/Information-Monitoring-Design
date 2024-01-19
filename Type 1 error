@@ -100,7 +100,7 @@ for (i in 1:1000) {
     Unadj_Estimate <- coefficients(model)[2] # retrieving the estimate
     
     ### calculating blinded unadjusted  variance
-    Blinded_Unadj_Var <- 1 / ((1 - mean(interimdata$trt)) * mean(interimdata$trt)) * var(interimdata$cd420- mean(interimdata$cd420)) / n1
+   Blinded_Unadj_Var <- var(interimdata$cd420)/ ((1 - mean(interimdata$trt)) * mean(interimdata$trt) * n1)
     
     inf_Blinded_Unadj_Var<-1/ Blinded_Unadj_Var
     
@@ -204,7 +204,7 @@ for (i in 1:1000) {
     
     Blinded_Adj_estimate <- coefficients(model1adj)[2]
     ### calculating blinded adjusted  variance
-    Blinded_Adj_Var <- var(interimdata$cd420- predict(model1adj)) / (mean(interimdata$trt) * (1 - mean(interimdata$trt))) / n1
+    Blinded_Adj_Var <- var(interimdata$cd420- predict(model1adj)) / (mean(interimdata$trt) * (1 - mean(interimdata$trt))* n1)
     
     inf_Blinded_Adj_Var<-1/ Blinded_Adj_Var
     
