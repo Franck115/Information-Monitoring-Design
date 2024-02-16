@@ -1,4 +1,4 @@
-# Thesis
+# Overview
 Combining Blinded covariate adjustment with information monitoring design
 
 We aimed to implement the method of using information monitoring design using covariate adjustment in a blinded way and make a comparison of all the methods. Simulation and real-world data was used in order to assess the performance of the proposed method and make comparison to the different methods. 
